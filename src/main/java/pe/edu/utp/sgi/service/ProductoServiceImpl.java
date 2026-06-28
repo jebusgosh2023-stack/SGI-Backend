@@ -7,12 +7,19 @@ import pe.edu.utp.sgi.dto.request.ProductoRequest;
 import pe.edu.utp.sgi.dto.response.ProductoResponse;
 import pe.edu.utp.sgi.entity.Categoria;
 import pe.edu.utp.sgi.entity.Producto;
+import pe.edu.utp.sgi.entity.StockSucursal;
+import pe.edu.utp.sgi.entity.Usuario;
 import pe.edu.utp.sgi.exception.BusinessRuleException;
 import pe.edu.utp.sgi.exception.ResourceNotFoundException;
 import pe.edu.utp.sgi.repository.CategoriaRepository;
 import pe.edu.utp.sgi.repository.ProductoRepository;
+import pe.edu.utp.sgi.repository.StockSucursalRepository;
+import pe.edu.utp.sgi.repository.UsuarioRepository;
+import pe.edu.utp.sgi.repository.SucursalRepository;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
@@ -21,13 +28,40 @@ public class ProductoServiceImpl implements ProductoService {
 
     private final ProductoRepository productoRepository;
     private final CategoriaRepository categoriaRepository;
+    private final StockSucursalRepository stockSucursalRepository;
+    private final UsuarioRepository usuarioRepository;
+    private final SucursalRepository sucursalRepository;
+
+    private Long getSucursalIdSegunRol(Long sucursalIdSolicitada) {
+        String correo = SecurityContextHolder.getContext().getAuthentication().getName();
+        Usuario usuario = usuarioRepository.findByCorreo(correo)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado"));
+        
+        String rol = usuario.getRol().getNombre();
+        if ("VENDEDOR".equals(rol) || "JEFE_ALMACEN".equals(rol)) {
+            if (usuario.getSucursal() == null) {
+                throw new BusinessRuleException("El usuario no tiene una sucursal asignada");
+            }
+            return usuario.getSucursal().getId();
+        }
+        return sucursalIdSolicitada; // ADMIN o GERENTE pueden mandar null o un ID específico
+    }
 
     @Override
     @Transactional(readOnly = true)
-    public List<ProductoResponse> listarTodos() {
-        return productoRepository.findByActivoTrue().stream()
+    public List<ProductoResponse> listarTodos(Long sucursalId) {
+        Long targetSucursalId = getSucursalIdSegunRol(sucursalId);
+        if (targetSucursalId != null) {
+            return stockSucursalRepository.findBySucursalIdAndProductoActivoTrue(targetSucursalId).stream()
+                    .map(this::toResponseWithStock)
+                    .collect(Collectors.toList());
+        }
+        
+        List<ProductoResponse> responses = productoRepository.findByActivoTrue().stream()
                 .map(this::toResponse)
                 .collect(Collectors.toList());
+                
+        return poblarStockTotal(responses);
     }
 
     @Override
@@ -35,15 +69,34 @@ public class ProductoServiceImpl implements ProductoService {
     public ProductoResponse obtenerPorId(Long id) {
         Producto producto = productoRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Producto no encontrado con id: " + id));
-        return toResponse(producto);
+        
+        ProductoResponse response = toResponse(producto);
+        
+        List<StockSucursal> stocks = stockSucursalRepository.findByProductoId(id);
+        if (!stocks.isEmpty()) {
+            // Asumimos la primera sucursal como la asignada (o principal)
+            StockSucursal stock = stocks.get(0);
+            response.setSucursalId(stock.getSucursal().getId());
+            response.setSucursal(stock.getSucursal().getNombre());
+        }
+        
+        return response;
     }
 
     @Override
     @Transactional(readOnly = true)
-    public List<ProductoResponse> buscarPorNombre(String nombre) {
-        return productoRepository.buscarPorNombre(nombre).stream()
+    public List<ProductoResponse> buscarPorNombre(String nombre, Long sucursalId) {
+        Long targetSucursalId = getSucursalIdSegunRol(sucursalId);
+        if (targetSucursalId != null) {
+            return stockSucursalRepository.buscarPorSucursalIdYNombreProducto(targetSucursalId, nombre).stream()
+                    .map(this::toResponseWithStock)
+                    .collect(Collectors.toList());
+        }
+        List<ProductoResponse> responses = productoRepository.buscarPorNombre(nombre).stream()
                 .map(this::toResponse)
                 .collect(Collectors.toList());
+                
+        return poblarStockTotal(responses);
     }
 
     @Override
@@ -82,6 +135,10 @@ public class ProductoServiceImpl implements ProductoService {
                     "RN-PRD-004: El stock mínimo debe ser menor o igual al stock máximo");
         }
 
+        pe.edu.utp.sgi.entity.Sucursal sucursal = sucursalRepository.findById(request.getSucursalId())
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Sucursal no encontrada con id: " + request.getSucursalId()));
+
         Producto producto = Producto.builder()
                 .sku(request.getSku())
                 .nombre(request.getNombre())
@@ -95,7 +152,19 @@ public class ProductoServiceImpl implements ProductoService {
                 .categoria(categoria)
                 .build();
 
-        return toResponse(productoRepository.save(producto));
+        producto = productoRepository.save(producto);
+
+        StockSucursal stockSucursal = StockSucursal.builder()
+                .producto(producto)
+                .sucursal(sucursal)
+                .cantidad(0)
+                .build();
+        stockSucursalRepository.save(stockSucursal);
+
+        ProductoResponse response = toResponse(producto);
+        response.setSucursalId(sucursal.getId());
+        response.setSucursal(sucursal.getNombre());
+        return response;
     }
 
     @Override
@@ -130,6 +199,10 @@ public class ProductoServiceImpl implements ProductoService {
                     "RN-PRD-004: El stock mínimo debe ser menor o igual al stock máximo");
         }
 
+        pe.edu.utp.sgi.entity.Sucursal nuevaSucursal = sucursalRepository.findById(request.getSucursalId())
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Sucursal no encontrada con id: " + request.getSucursalId()));
+
         producto.setSku(request.getSku());
         producto.setNombre(request.getNombre());
         producto.setDescripcion(request.getDescripcion());
@@ -140,7 +213,22 @@ public class ProductoServiceImpl implements ProductoService {
         producto.setStockMaximo(request.getStockMaximo());
         producto.setCategoria(categoria);
 
-        return toResponse(productoRepository.save(producto));
+        producto = productoRepository.save(producto);
+
+        java.util.Optional<StockSucursal> stockOpt = stockSucursalRepository.findByProductoAndSucursal(producto, nuevaSucursal);
+        if (stockOpt.isEmpty()) {
+            StockSucursal stockSucursal = StockSucursal.builder()
+                    .producto(producto)
+                    .sucursal(nuevaSucursal)
+                    .cantidad(0)
+                    .build();
+            stockSucursalRepository.save(stockSucursal);
+        }
+
+        ProductoResponse response = toResponse(producto);
+        response.setSucursalId(nuevaSucursal.getId());
+        response.setSucursal(nuevaSucursal.getNombre());
+        return response;
     }
 
     @Override
@@ -168,5 +256,28 @@ public class ProductoServiceImpl implements ProductoService {
                 .categoria(p.getCategoria() != null ? p.getCategoria().getNombre() : null)
                 .categoriaId(p.getCategoria() != null ? p.getCategoria().getId() : null)
                 .build();
+    }
+
+    private ProductoResponse toResponseWithStock(StockSucursal s) {
+        ProductoResponse res = toResponse(s.getProducto());
+        res.setStockActual(s.getCantidad());
+        res.setSucursalId(s.getSucursal().getId());
+        res.setSucursal(s.getSucursal().getNombre());
+        return res;
+    }
+
+    private List<ProductoResponse> poblarStockTotal(List<ProductoResponse> responses) {
+        List<Object[]> totales = stockSucursalRepository.sumarStockPorProductoActivo();
+        Map<Long, Integer> mapaTotales = totales.stream()
+                .collect(Collectors.toMap(
+                        row -> (Long) row[0],
+                        row -> ((Number) row[1]).intValue()
+                ));
+        
+        responses.forEach(r -> {
+            r.setStockActual(mapaTotales.getOrDefault(r.getId(), 0));
+        });
+        
+        return responses;
     }
 }

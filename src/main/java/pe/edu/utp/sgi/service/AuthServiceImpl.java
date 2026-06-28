@@ -66,6 +66,7 @@ public class AuthServiceImpl implements AuthService {
                 .nombre(usuario.getNombre())
                 .correo(usuario.getCorreo())
                 .rol(rol.getNombre())
+                .sucursalId(usuario.getSucursal() != null ? usuario.getSucursal().getId() : null)
                 .build();
     }
 
@@ -87,6 +88,7 @@ public class AuthServiceImpl implements AuthService {
                 .nombre(usuario.getNombre())
                 .correo(usuario.getCorreo())
                 .rol(usuario.getRol().getNombre())
+                .sucursalId(usuario.getSucursal() != null ? usuario.getSucursal().getId() : null)
                 .build();
     }
 }

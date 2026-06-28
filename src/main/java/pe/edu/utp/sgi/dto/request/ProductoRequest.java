@@ -42,4 +42,7 @@ public class ProductoRequest {
 
     @NotNull(message = "La categoría es obligatoria")
     private Long categoriaId;
+
+    @NotNull(message = "La sucursal es obligatoria")
+    private Long sucursalId;
 }

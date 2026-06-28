@@ -20,8 +20,9 @@ public class ProductoController {
     private final ProductoService productoService;
 
     @GetMapping
-    public ResponseEntity<List<ProductoResponse>> listarTodos() {
-        return ResponseEntity.ok(productoService.listarTodos());
+    public ResponseEntity<List<ProductoResponse>> listarTodos(
+            @RequestParam(required = false) Long sucursalId) {
+        return ResponseEntity.ok(productoService.listarTodos(sucursalId));
     }
 
     @GetMapping("/{id}")
@@ -31,8 +32,9 @@ public class ProductoController {
 
     @GetMapping("/buscar")
     public ResponseEntity<List<ProductoResponse>> buscarPorNombre(
-            @RequestParam String nombre) {
-        return ResponseEntity.ok(productoService.buscarPorNombre(nombre));
+            @RequestParam String nombre,
+            @RequestParam(required = false) Long sucursalId) {
+        return ResponseEntity.ok(productoService.buscarPorNombre(nombre, sucursalId));
     }
 
     @GetMapping("/bajo-stock")

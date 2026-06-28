@@ -21,4 +21,7 @@ public class ProductoResponse {
     private Boolean activo;
     private String categoria;
     private Long categoriaId;
+    private Integer stockActual;
+    private String sucursal;
+    private Long sucursalId;
 }

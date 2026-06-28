@@ -69,6 +69,13 @@ public class MovimientoServiceImpl implements MovimientoService {
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Usuario no encontrado con correo: " + correoUsuario));
 
+        // RN-MOV-007: Jefes de almacén solo pueden registrar entradas a su propia sucursal
+        if ("JEFE_ALMACEN".equalsIgnoreCase(usuario.getRol().getNombre())) {
+            if (usuario.getSucursal() == null || !usuario.getSucursal().getId().equals(request.getSucursalId())) {
+                throw new BusinessRuleException("RN-MOV-007: Solo puede registrar entradas a la sucursal que tiene asignada");
+            }
+        }
+
         // RN-INV-004: Actualizar stock
         StockSucursal stock = stockSucursalRepository
                 .findByProductoAndSucursal(producto, sucursal)
@@ -115,6 +122,13 @@ public class MovimientoServiceImpl implements MovimientoService {
         Usuario usuario = usuarioRepository.findByCorreo(correoUsuario)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Usuario no encontrado con correo: " + correoUsuario));
+
+        // RN-MOV-006: Vendedores solo pueden registrar salidas de su propia sucursal
+        if ("VENDEDOR".equalsIgnoreCase(usuario.getRol().getNombre())) {
+            if (usuario.getSucursal() == null || !usuario.getSucursal().getId().equals(request.getSucursalId())) {
+                throw new BusinessRuleException("RN-MOV-006: Solo puede registrar ventas/salidas de la sucursal que tiene asignada");
+            }
+        }
 
         // RN-MOV-002 / RN-INV-002: Verificar stock suficiente
         StockSucursal stock = stockSucursalRepository
@@ -183,6 +197,13 @@ public class MovimientoServiceImpl implements MovimientoService {
         Usuario usuario = usuarioRepository.findByCorreo(correoUsuario)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Usuario no encontrado con correo: " + correoUsuario));
+
+        // RN-MOV-008: Jefes de almacén solo pueden registrar transferencias desde su propia sucursal
+        if ("JEFE_ALMACEN".equalsIgnoreCase(usuario.getRol().getNombre())) {
+            if (usuario.getSucursal() == null || !usuario.getSucursal().getId().equals(request.getSucursalOrigenId())) {
+                throw new BusinessRuleException("RN-MOV-008: Solo puede registrar transferencias desde la sucursal que tiene asignada");
+            }
+        }
 
         // RN-MOV-002 / RN-INV-002: Verificar stock en origen
         StockSucursal stockOrigen = stockSucursalRepository
