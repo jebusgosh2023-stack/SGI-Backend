@@ -58,7 +58,7 @@ public class DashboardServiceImpl implements DashboardService {
 
             Pageable limitTen = PageRequest.of(0, 10);
             List<Object[]> masMovidosData = movimientoRepository.findTopProductosMasMovidosGlobal(
-                    Arrays.asList(TipoMovimiento.ENTRADA, TipoMovimiento.SALIDA, TipoMovimiento.TRANSFERENCIA), limitTen);
+                    List.of(TipoMovimiento.SALIDA), limitTen);
             List<ProductoMovimientoDto> masMovidos = masMovidosData.stream()
                     .map(obj -> ProductoMovimientoDto.builder()
                             .nombreProducto((String) obj[0])
